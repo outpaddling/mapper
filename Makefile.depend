@@ -1,0 +1,3 @@
+align.o: align.c
+	${CC} -c ${CFLAGS} align.c
+
