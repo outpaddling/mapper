@@ -1,9 +1,7 @@
 /***************************************************************************
  *  Description:
- *  
- *  Arguments:
- *
- *  Returns:
+ *      Experimental read mapper to explore read mapping and alignment
+ *      algorithms.
  *
  *  History: 
  *  Date        Name        Modification
@@ -43,6 +41,18 @@ int     main(int argc,char *argv[])
 }
 
 
+/***************************************************************************
+ *  Description:
+ *      Basic algorithm to align reads to a sequence.  More than twice
+ *      as fast as strcmp().  Just beginning: need to explore other
+ *      approaches besides brute force to make mapping feasible for
+ *      large genomes and transcriptomes.
+ *
+ *  History: 
+ *  Date        Name        Modification
+ *  2023-03-26  Jason Bacon Begin
+ ***************************************************************************/
+
 inline int  match(const char * restrict p1, const char * restrict p2)
 
 {
@@ -59,7 +69,8 @@ int     align(const char *ref_file, const char *reads_file)
     FILE        *ref_fp, *reads_fp;
     bl_fasta_t  temp_seq, **sequences;
     bl_fastq_t  read;
-    size_t      seq_count, read_count;
+    size_t      seq_count, seq, read_count;
+    char        *read_ptr, *seq_ptr;
     
     if ( (ref_fp = xt_fopen(ref_file, "r")) == NULL )
     {
@@ -100,12 +111,15 @@ int     align(const char *ref_file, const char *reads_file)
     bl_fastq_init(&read);
     while ( bl_fastq_read(&read, reads_fp) == BL_READ_OK )
     {
-	for (size_t seq = 0; seq < seq_count; ++seq)
+	read_ptr = BL_FASTQ_SEQ(&read);
+	for (seq = 0; seq < seq_count; ++seq)
 	{
-	    for (char *p = BL_FASTA_SEQ(sequences[seq]); *p != 0; ++p)
+	    for (seq_ptr = BL_FASTA_SEQ(sequences[seq]); *seq_ptr != 0; ++seq_ptr)
 	    {
-		if ( match(BL_FASTQ_SEQ(&read), p) == 0 )
-		    printf("\nMatch found in sequence %zu.\n", seq);
+		// Checking first char before calling match() speeds it up a bit
+		if ( *read_ptr == *seq_ptr )
+		    if ( match(read_ptr, seq_ptr) == 0 )
+			printf("\nMatch found in sequence %zu.\n", seq);
 	    }
 	}
 	if ( read_count % 100 == 0 )
