@@ -43,8 +43,8 @@ int     main(int argc,char *argv[])
 
 /***************************************************************************
  *  Description:
- *      Basic algorithm to align reads to a sequence.  More than twice
- *      as fast as strcmp().  Just beginning: need to explore other
+ *      Basic algorithm to align reads to a sequence.
+ *      Just beginning: need to explore other
  *      approaches besides brute force to make mapping feasible for
  *      large genomes and transcriptomes.
  *
@@ -53,15 +53,20 @@ int     main(int argc,char *argv[])
  *  2023-03-26  Jason Bacon Begin
  ***************************************************************************/
 
-inline ssize_t  match(const char seq[], size_t seq_len, const char read[])
+inline ssize_t  match(const char seq[], size_t seq_len,
+		      const char read[], size_t read_len)
 
 {
-    const char    *seq_start, *sp, *rp, *last_start = seq + seq_len - 20;
+    // Allow whole read to be compared at end of sequence
+    const char  *last_start = seq + seq_len - read_len;
+    const char  *sp, *rp, *seq_start;
     
     for (seq_start = seq; seq_start < last_start; ++seq_start)
     {
-	for (rp = read, sp = seq_start; (*rp == *sp) && (*rp != '\0'); ++rp, ++sp)
-	    ;
+	rp = read, sp = seq_start;
+	// Need only check one for null byte if they're the same
+	while ( (*rp == *sp) && (*rp != '\0') )
+	    ++rp, ++sp;
 	
 	if ( (*rp == 0) || (*sp == 0) )
 	    return seq_start - seq;
@@ -74,10 +79,10 @@ inline ssize_t  match(const char seq[], size_t seq_len, const char read[])
 int     align(const char *ref_file, const char *reads_file)
 
 {
-    FILE        *ref_fp, *reads_fp;
+    FILE        *ref_fp, *reads_fp, *align_fp;
     bl_fasta_t  **sequences;
     bl_fastq_t  read;
-    size_t      seq_count, seq, seq_len, read_count;
+    size_t      seq_count, seq, seq_len, read_count, read_len;
     ssize_t     offset;
     char        *read_ptr, *seq_ptr;
     
@@ -90,6 +95,12 @@ int     align(const char *ref_file, const char *reads_file)
     if ( (reads_fp = xt_fopen(reads_file, "r")) == NULL )
     {
 	fprintf(stderr, "Cannot open %s: %s\n", reads_file, strerror(errno));
+	return EX_NOINPUT;
+    }
+    
+    if ( (align_fp = xt_fopen("alignments.txt", "w")) == NULL )
+    {
+	fprintf(stderr, "Cannot open aligments.txt: %s\n", strerror(errno));
 	return EX_NOINPUT;
     }
     
@@ -119,15 +130,18 @@ int     align(const char *ref_file, const char *reads_file)
     
     read_count = 0;
     bl_fastq_init(&read);
-    while ( bl_fastq_read(&read, reads_fp) == BL_READ_OK )
+    
+    // FIXME: Stopping at 200 reads for quick test and timing
+    while ( bl_fastq_read(&read, reads_fp) == BL_READ_OK && read_count < 200 )
     {
 	read_ptr = BL_FASTQ_SEQ(&read);
 	for (seq = 0; seq < seq_count; ++seq)
 	{
 	    seq_ptr = BL_FASTA_SEQ(sequences[seq]);
 	    seq_len = BL_FASTA_SEQ_LEN(sequences[seq]);
-	    if ( (offset = match(seq_ptr, seq_len, read_ptr)) > 0 )
-		printf("\ns[%zu], %zd\n", seq, offset);
+	    read_len = BL_FASTQ_SEQ_LEN(&read);
+	    if ( (offset = match(seq_ptr, seq_len, read_ptr, read_len)) > 0 )
+		fprintf(align_fp, "\ns[%zu], %zd\n", seq, offset);
 	}
 	if ( read_count % 100 == 0 )
 	{
@@ -137,6 +151,7 @@ int     align(const char *ref_file, const char *reads_file)
 	++read_count;
     }
     fclose(reads_fp);
+    fclose(align_fp);
     printf("%zu reads processed.\n", read_count);
     
     return EX_OK;
