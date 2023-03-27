@@ -53,13 +53,21 @@ int     main(int argc,char *argv[])
  *  2023-03-26  Jason Bacon Begin
  ***************************************************************************/
 
-inline int  match(const char * restrict p1, const char * restrict p2)
+inline ssize_t  match(const char seq[], size_t seq_len, const char read[])
 
 {
-    while ( (*p1 == *p2) && (*p1 != '\0') )
-	++p1, ++p2;
+    const char    *seq_start, *sp, *rp, *last_start = seq + seq_len - 20;
     
-    return *p2 - *p1;
+    for (seq_start = seq; seq_start < last_start; ++seq_start)
+    {
+	for (rp = read, sp = seq_start; (*rp == *sp) && (*rp != '\0'); ++rp, ++sp)
+	    ;
+	
+	if ( (*rp == 0) || (*sp == 0) )
+	    return seq_start - seq;
+    }
+    
+    return -1;
 }
 
 
@@ -67,9 +75,10 @@ int     align(const char *ref_file, const char *reads_file)
 
 {
     FILE        *ref_fp, *reads_fp;
-    bl_fasta_t  temp_seq, **sequences;
+    bl_fasta_t  **sequences;
     bl_fastq_t  read;
-    size_t      seq_count, seq, read_count;
+    size_t      seq_count, seq, seq_len, read_count;
+    ssize_t     offset;
     char        *read_ptr, *seq_ptr;
     
     if ( (ref_fp = xt_fopen(ref_file, "r")) == NULL )
@@ -91,18 +100,19 @@ int     align(const char *ref_file, const char *reads_file)
     }
     seq_count = 0;
     
-    bl_fasta_init(&temp_seq);
-    while ( bl_fasta_read(&temp_seq, ref_fp) == BL_READ_OK )
+    // FIXME: Check success
+    sequences[0] = xt_malloc(1, sizeof(bl_fasta_t));
+    bl_fasta_init(sequences[0]);
+    while ( bl_fasta_read(sequences[seq_count], ref_fp) == BL_READ_OK )
     {
 	// puts(BL_FASTA_DESC(&temp_seq));
+	++seq_count;
 	if ( (sequences[seq_count] = xt_malloc(1, sizeof(bl_fasta_t))) == NULL )
 	{
 	    fprintf(stderr, 
 		    "Could not allocate FASTA sequence #%zu.\n", seq_count);
 	    return EX_UNAVAILABLE;
 	}
-	*sequences[seq_count] = temp_seq;
-	++seq_count;
     }
     fclose(ref_fp);
     printf("%zu sequences loaded.\n", seq_count);
@@ -114,13 +124,10 @@ int     align(const char *ref_file, const char *reads_file)
 	read_ptr = BL_FASTQ_SEQ(&read);
 	for (seq = 0; seq < seq_count; ++seq)
 	{
-	    for (seq_ptr = BL_FASTA_SEQ(sequences[seq]); *seq_ptr != 0; ++seq_ptr)
-	    {
-		// Checking first char before calling match() speeds it up a bit
-		if ( *read_ptr == *seq_ptr )
-		    if ( match(read_ptr, seq_ptr) == 0 )
-			printf("\nMatch found in sequence %zu.\n", seq);
-	    }
+	    seq_ptr = BL_FASTA_SEQ(sequences[seq]);
+	    seq_len = BL_FASTA_SEQ_LEN(sequences[seq]);
+	    if ( (offset = match(seq_ptr, seq_len, read_ptr)) > 0 )
+		printf("\ns[%zu], %zd\n", seq, offset);
 	}
 	if ( read_count % 100 == 0 )
 	{
@@ -139,6 +146,6 @@ int     align(const char *ref_file, const char *reads_file)
 void    usage(char *argv[])
 
 {
-    fprintf(stderr, "Usage: %s\n", argv[0]);
+    fprintf(stderr, "Usage: %s reference.fa reads.fq\n", argv[0]);
     exit(EX_USAGE);
 }
