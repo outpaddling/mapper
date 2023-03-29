@@ -161,6 +161,6 @@ int     align(const char *ref_file, const char *reads_file)
 void    usage(char *argv[])
 
 {
-    fprintf(stderr, "Usage: %s reference.fa reads.fq\n", argv[0]);
+    fprintf(stderr, "Usage: %s reference.fa[.gz|.bz2|.xz] reads.fq[.gz|.bz2|.xz]\n", argv[0]);
     exit(EX_USAGE);
 }
